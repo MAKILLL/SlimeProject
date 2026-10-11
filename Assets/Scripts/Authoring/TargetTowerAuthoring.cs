@@ -26,6 +26,9 @@ namespace SlimeSwarm
                     AttackRadius = authoring.attackRadius,
                     DamagePerSecond = authoring.damagePerSecond
                 });
+
+                // Пункт 2B: Добавление DynamicBuffer на Entity по методичке (стр. 5)
+                AddBuffer<DamageBufferElement>(entity);
             }
         }
     }

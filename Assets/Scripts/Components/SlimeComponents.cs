@@ -3,6 +3,10 @@ using Unity.Mathematics;
 
 namespace SlimeSwarm
 {
+    // ==========================================
+    // ПРАКТИКА 1: БАЗОВЫЕ КОМПОНЕНТЫ
+    // ==========================================
+
     // 1. Тег слизня (позволяет быстро фильтровать сущности в Query)
     public struct SlimeTag : IComponentData { }
 
@@ -84,4 +88,61 @@ namespace SlimeSwarm
 
     // 10. Выключаемый компонент DeadTag (IEnableableComponent из методички)
     public struct DeadTag : IComponentData, IEnableableComponent { }
+
+    // ==========================================
+    // ПРАКТИКА 2: НОВЫЕ СТРУКТУРЫ ДАННЫХ
+    // ==========================================
+
+    // Пункт 1: Singleton-компонент хранилища префабов
+    public struct PrefabHolder : IComponentData
+    {
+        public Entity GreenSlimePrefab;
+        public Entity RedSlimePrefab;
+    }
+
+    // Пункт 2A: Типы врагов и Blob-структуры (статические данные волн)
+    public enum EnemyType : byte
+    {
+        Green = 0,
+        Red = 1
+    }
+
+    public struct EnemyInWave
+    {
+        public EnemyType EnemyType;
+        public int Amount;
+    }
+
+    public struct Wave
+    {
+        public float WaitTimeBeforeWave;
+        public BlobArray<EnemyInWave> Enemies;
+    }
+
+    public struct WavesBlob
+    {
+        public BlobArray<Wave> Waves;
+    }
+
+    // Компонент-держатель ссылки на BlobAsset
+    public struct WavesHolder : IComponentData
+    {
+        public BlobAssetReference<WavesBlob> WavesReference;
+        public int CurrentWaveIndex;
+        public float WaveTimer;
+        public bool AllWavesSpawned;
+    }
+
+    // Пункт 2B: DynamicBuffer (динамический буфер входящего урона на башне)
+    [InternalBufferCapacity(8)]
+    public struct DamageBufferElement : IBufferElementData
+    {
+        public float Value;
+    }
+
+    // Пункт 3: RandomHolder со структурой Unity.Mathematics.Random
+    public struct RandomHolder : IComponentData
+    {
+        public Unity.Mathematics.Random Random;
+    }
 }

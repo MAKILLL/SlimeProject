@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.IO;
 using UnityEditor;
 using UnityEditor.SceneManagement;
@@ -9,50 +10,37 @@ namespace SlimeSwarm.Editor
 {
     public static class SlimeSceneAutoSetup
     {
-        [MenuItem("Tools/Slime Swarm/Setup Clean Scene", priority = 1)]
+        [MenuItem("Tools/Slime Swarm/Setup Practice 2 Scene", priority = 1)]
         public static void SetupCompleteScene()
         {
-            Debug.Log("[SlimeSwarm] 🧹 Начинаем чистую пересборку сцен без рекурсии...");
+            Debug.Log("[SlimeSwarm] 🚀 Начинаем настройку сцены для Практики №2 (Blob + DynamicBuffer + PrefabHolder)...");
 
             EnsureDirectory("Assets/Materials");
             EnsureDirectory("Assets/Prefabs");
             EnsureDirectory("Assets/Scenes");
 
-            // 1. Материалы
-            Material slimeMat = CreateOrGetMaterial("Assets/Materials/SlimeMaterial.mat", new Color(0.2f, 0.9f, 0.4f, 1f));
-            Material towerMat = CreateOrGetMaterial("Assets/Materials/TowerMaterial.mat", new Color(0.9f, 0.3f, 0.2f, 1f));
+            // 1. Материалы URP
+            Material greenMat = CreateOrGetMaterial("Assets/Materials/GreenSlimeMaterial.mat", new Color(0.2f, 0.9f, 0.4f, 1f));
+            Material redMat = CreateOrGetMaterial("Assets/Materials/RedSlimeMaterial.mat", new Color(0.95f, 0.25f, 0.25f, 1f));
+            Material towerMat = CreateOrGetMaterial("Assets/Materials/TowerMaterial.mat", new Color(0.2f, 0.5f, 0.95f, 1f)); // Синяя башня
             Material floorMat = CreateOrGetMaterial("Assets/Materials/FloorMaterial.mat", new Color(0.18f, 0.2f, 0.25f, 1f));
 
-            // 2. Префаб слизня
-            GameObject slimeGo = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-            slimeGo.name = "SlimePrefab";
-            slimeGo.GetComponent<MeshRenderer>().sharedMaterial = slimeMat;
-            
-            Collider sphereCol = slimeGo.GetComponent<Collider>();
-            if (sphereCol != null) Object.DestroyImmediate(sphereCol);
+            // 2. Создаем 2 префаба для Singleton-хранилища PrefabHolder
+            GameObject greenPrefab = CreateSlimePrefab("Assets/Prefabs/GreenSlimePrefab.prefab", greenMat, 100f, 4.5f, 0.35f);
+            GameObject redPrefab = CreateSlimePrefab("Assets/Prefabs/RedSlimePrefab.prefab", redMat, 70f, 6.5f, 0.45f);
 
-            SlimeAuthoring slimeAuth = slimeGo.AddComponent<SlimeAuthoring>();
-            slimeAuth.maxHealth = 100f;
-            slimeAuth.maxStamina = 50f;
-            slimeAuth.moveSpeed = 5.0f;
-            slimeAuth.jumpHeight = 1.2f;
-            slimeAuth.squashAmount = 0.35f;
-            slimeAuth.bounceSpeed = 8f;
-
-            string prefabPath = "Assets/Prefabs/SlimePrefab.prefab";
-            GameObject slimePrefab = PrefabUtility.SaveAsPrefabAsset(slimeGo, prefabPath);
-            GameObject.DestroyImmediate(slimeGo);
-
-            // 3. Создаем абсолютно чистую SubScene: Assets/Scenes/SlimeSubScene.unity
+            // 3. Создаем абсолютно чистую SubScene
             string subScenePath = "Assets/Scenes/SlimeSubScene.unity";
             Scene subSceneAsset = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
             
+            // Арена
             GameObject plane = GameObject.CreatePrimitive(PrimitiveType.Plane);
             plane.name = "ArenaPlane";
             plane.transform.position = Vector3.zero;
             plane.transform.localScale = new Vector3(12, 1, 12);
             plane.GetComponent<MeshRenderer>().sharedMaterial = floorMat;
 
+            // Башня (с DynamicBuffer DamageBufferElement)
             GameObject tower = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
             tower.name = "Tower";
             tower.transform.position = new Vector3(0, 1.5f, 0);
@@ -63,14 +51,49 @@ namespace SlimeSwarm.Editor
             towerAuth.attackRadius = 16f;
             towerAuth.damagePerSecond = 80f;
 
-            GameObject spawner = new GameObject("SlimeSpawner");
-            spawner.transform.position = Vector3.zero;
-            var spawnerAuth = spawner.AddComponent<SlimeSpawnerAuthoring>();
-            spawnerAuth.slimePrefab = slimePrefab;
-            spawnerAuth.initialSpawnCount = 10000;
-            spawnerAuth.spawnRadius = 45f;
-            spawnerAuth.spawnInterval = 5f;
-            spawnerAuth.continuousSpawn = false; // Отключен бесконечный автоспавн
+            // Хранилище префабов (Singleton по методичке стр. 8)
+            GameObject prefabHolderGo = new GameObject("PrefabHolder");
+            var prefAuth = prefabHolderGo.AddComponent<PrefabHolderAuthoring>();
+            prefAuth.greenSlimePrefab = greenPrefab;
+            prefAuth.redSlimePrefab = redPrefab;
+
+            // Конфигуратор волн (Blob по методичке стр. 1-4)
+            GameObject wavesGo = new GameObject("WavesManager");
+            var wavesAuth = wavesGo.AddComponent<WavesAuthoring>();
+            
+            // Настраиваем 3 волны прямо в инспекторе
+            var wavesList = new List<EnemiesWave>
+            {
+                new EnemiesWave
+                {
+                    WaitTimeBeforeWave = 0f, // Спавн первой волны сразу на старте
+                    EnemiesInWave = new List<WaveEnemy>
+                    {
+                        new WaveEnemy { EnemyType = EnemyType.Green, Amount = 4000 }
+                    }
+                },
+                new EnemiesWave
+                {
+                    WaitTimeBeforeWave = 4f,
+                    EnemiesInWave = new List<WaveEnemy>
+                    {
+                        new WaveEnemy { EnemyType = EnemyType.Green, Amount = 4000 },
+                        new WaveEnemy { EnemyType = EnemyType.Red, Amount = 2000 }
+                    }
+                },
+                new EnemiesWave
+                {
+                    WaitTimeBeforeWave = 5f,
+                    EnemiesInWave = new List<WaveEnemy>
+                    {
+                        new WaveEnemy { EnemyType = EnemyType.Green, Amount = 5000 },
+                        new WaveEnemy { EnemyType = EnemyType.Red, Amount = 3000 }
+                    }
+                }
+            };
+            wavesAuth._waves = wavesList;
+            EditorUtility.SetDirty(wavesGo);
+            EditorUtility.SetDirty(prefabHolderGo);
 
             EditorSceneManager.SaveScene(subSceneAsset, subScenePath);
 
@@ -105,13 +128,34 @@ namespace SlimeSwarm.Editor
 
             EditorSceneManager.SaveScene(mainScene, mainScenePath);
 
-            // Открываем сабсцену в редакторе
+            // Открываем сабсцену в редакторе аддитивно
             EditorSceneManager.OpenScene(subScenePath, OpenSceneMode.Additive);
 
             AssetDatabase.SaveAssets();
             AssetDatabase.Refresh();
 
-            Debug.Log("[SlimeSwarm] ✅ Чистая сцена успешно собрана!");
+            Debug.Log("[SlimeSwarm] ✅ Сцена для Практики №2 полностью настроена и сохранена!");
+        }
+
+        private static GameObject CreateSlimePrefab(string path, Material mat, float hp, float speed, float squash)
+        {
+            GameObject slimeGo = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            slimeGo.GetComponent<MeshRenderer>().sharedMaterial = mat;
+
+            Collider sphereCol = slimeGo.GetComponent<Collider>();
+            if (sphereCol != null) Object.DestroyImmediate(sphereCol);
+
+            SlimeAuthoring slimeAuth = slimeGo.AddComponent<SlimeAuthoring>();
+            slimeAuth.maxHealth = hp;
+            slimeAuth.maxStamina = 50f;
+            slimeAuth.moveSpeed = speed;
+            slimeAuth.jumpHeight = 1.2f;
+            slimeAuth.squashAmount = squash;
+            slimeAuth.bounceSpeed = 8f;
+
+            GameObject prefab = PrefabUtility.SaveAsPrefabAsset(slimeGo, path);
+            GameObject.DestroyImmediate(slimeGo);
+            return prefab;
         }
 
         private static void EnsureDirectory(string path)

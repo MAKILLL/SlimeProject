@@ -10,10 +10,12 @@ namespace SlimeSwarm
         private int _cachedSlimeCount = 0;
         private float _cachedTowerHp = 10000f;
         private float _cachedTowerMaxHp = 10000f;
+        private int _currentWave = 0;
+        private bool _allWavesSpawned = false;
 
         private EntityQuery _slimeQuery;
         private EntityQuery _towerQuery;
-        private EntityQuery _spawnerQuery;
+        private EntityQuery _wavesQuery;
         private bool _queriesInitialized = false;
 
         private void Awake()
@@ -37,14 +39,13 @@ namespace SlimeSwarm
                 var em = defaultWorld.EntityManager;
                 _slimeQuery = em.CreateEntityQuery(typeof(SlimeTag));
                 _towerQuery = em.CreateEntityQuery(typeof(TargetTowerTag), typeof(TowerComponent));
-                _spawnerQuery = em.CreateEntityQuery(typeof(SlimeSpawnerComponent));
+                _wavesQuery = em.CreateEntityQuery(typeof(WavesHolder));
                 _queriesInitialized = true;
             }
         }
 
         private void Update()
         {
-            // Пропускаем первые 3 кадра загрузки для точного расчета FPS
             if (Time.frameCount > 3 && Time.unscaledDeltaTime > 0.0001f)
             {
                 float instantFps = 1.0f / Time.unscaledDeltaTime;
@@ -78,12 +79,22 @@ namespace SlimeSwarm
                     _cachedTowerMaxHp = towers[0].MaxHealth;
                 }
             }
+
+            if (_wavesQuery.CalculateEntityCount() > 0)
+            {
+                using var waves = _wavesQuery.ToComponentDataArray<WavesHolder>(Unity.Collections.Allocator.Temp);
+                if (waves.Length > 0)
+                {
+                    _currentWave = waves[0].CurrentWaveIndex;
+                    _allWavesSpawned = waves[0].AllWavesSpawned;
+                }
+            }
         }
 
         private void OnGUI()
         {
-            float boxX = Screen.width - 375;
-            GUI.Box(new Rect(boxX, 15, 360, 240), "Арена Слизней (Slime Swarm Arena) — DOTS");
+            float boxX = Screen.width - 385;
+            GUI.Box(new Rect(boxX, 15, 370, 245), "Арена Слизней — Практика №2 (DOTS Blob)");
 
             GUIStyle labelStyle = new GUIStyle(GUI.skin.label)
             {
@@ -93,50 +104,24 @@ namespace SlimeSwarm
 
             // FPS
             GUI.color = _currentFps >= 50f ? Color.green : (_currentFps >= 30f ? Color.yellow : Color.red);
-            GUI.Label(new Rect(boxX + 15, 45, 330, 25), $"FPS: {_currentFps:F1}", labelStyle);
+            GUI.Label(new Rect(boxX + 15, 42, 340, 25), $"FPS: {_currentFps:F1}", labelStyle);
             GUI.color = Color.white;
 
+            // Волна из Blob
+            string waveText = _allWavesSpawned ? "Все волны вышли!" : $"Волна (Blob): {_currentWave + 1}";
+            GUI.Label(new Rect(boxX + 15, 68, 340, 25), waveText, labelStyle);
+
             // Количество слизней
-            GUI.Label(new Rect(boxX + 15, 75, 330, 25), $"Количество слизней в рое: {_cachedSlimeCount:N0}", labelStyle);
+            GUI.Label(new Rect(boxX + 15, 94, 340, 25), $"Количество в рое: {_cachedSlimeCount:N0}", labelStyle);
 
             // Здоровье башни
             float hpPct = _cachedTowerMaxHp > 0f ? (_cachedTowerHp / _cachedTowerMaxHp) * 100f : 0f;
-            GUI.Label(new Rect(boxX + 15, 105, 330, 25), $"Здоровье башни: {_cachedTowerHp:F0} / {_cachedTowerMaxHp:F0} ({hpPct:F0}%)", labelStyle);
+            GUI.Label(new Rect(boxX + 15, 120, 340, 25), $"Башня: {_cachedTowerHp:F0} / {_cachedTowerMaxHp:F0} ({hpPct:F0}%)", labelStyle);
 
-            // Кнопки управления спавном
-            if (GUI.Button(new Rect(boxX + 15, 140, 150, 35), "+ 1 000 Слизней"))
-            {
-                SpawnAdditionalSlimes(1000);
-            }
-
-            if (GUI.Button(new Rect(boxX + 175, 140, 160, 35), "+ 10 000 Слизней"))
-            {
-                SpawnAdditionalSlimes(10000);
-            }
-
-            if (GUI.Button(new Rect(boxX + 15, 185, 320, 35), "Уничтожить всех слизней"))
+            // Кнопка очистки
+            if (GUI.Button(new Rect(boxX + 15, 160, 340, 35), "Уничтожить всех слизней (ECB)"))
             {
                 ClearAllSlimes();
-            }
-        }
-
-        private void SpawnAdditionalSlimes(int count)
-        {
-            if (!_queriesInitialized) InitQueries();
-            if (!_queriesInitialized) return;
-
-            var defaultWorld = World.DefaultGameObjectInjectionWorld;
-            var em = defaultWorld.EntityManager;
-
-            if (_spawnerQuery.CalculateEntityCount() > 0)
-            {
-                using var entities = _spawnerQuery.ToEntityArray(Unity.Collections.Allocator.Temp);
-                for (int i = 0; i < entities.Length; i++)
-                {
-                    var spawner = em.GetComponentData<SlimeSpawnerComponent>(entities[i]);
-                    spawner.SpawnCount += count;
-                    em.SetComponentData(entities[i], spawner);
-                }
             }
         }
 
