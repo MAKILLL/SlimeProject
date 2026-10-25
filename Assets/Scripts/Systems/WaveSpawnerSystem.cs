@@ -1,17 +1,24 @@
 using Unity.Burst;
-using Unity.Collections;
 using Unity.Entities;
 using Unity.Mathematics;
 using Unity.Transforms;
 
 namespace SlimeSwarm
 {
-    // Система спавна волн по методичке:
-    // 1. Помещена в кастомную группу WaveSystemGroup (стр. 9-10)
-    // 2. Читает префабы из Singleton-компонента PrefabHolder (стр. 8)
-    // 3. Читает статическую конфигурацию волн из BlobAsset (стр. 1-5)
-    // 4. Использует EntityCommandBuffer для спавна (стр. 7)
-    // 5. Использует Unity.Mathematics.Random для рандомизации (стр. 7)
+    // =========================================================================
+    // ПРАКТИКИ №2 И №3: ПОСЛЕДОВАТЕЛЬНАЯ СИСТЕМА СПАВНА ВОЛН
+    // Почему эта система НЕ распараллеливается (Слайд 1 методички №3):
+    // "А вот система спавна – отсчитывает время по таймеру и раз в X секунд создаёт
+    // нового Entity. В ней абсолютно нечего вычислять параллельно. Весь процесс –
+    // однородный и последовательный, а значит – можно обойтись одним потоком."
+    //
+    // Архитектурные элементы из Практики №2:
+    // 1. Помещена в кастомную группу WaveSystemGroup (срабатывает 1 раз в секунду).
+    // 2. Читает префабы из Singleton-компонента PrefabHolder.
+    // 3. Читает неизменяемую конфигурацию волн из плоской памяти BlobAsset.
+    // 4. Использует EntityCommandBuffer для пакетного спавна.
+    // 5. Использует Unity.Mathematics.Random для расчета позиций спавна на кольце.
+    // =========================================================================
     [BurstCompile]
     [UpdateInGroup(typeof(WaveSystemGroup))]
     public partial struct WaveSpawnerSystem : ISystem
@@ -27,10 +34,8 @@ namespace SlimeSwarm
         [BurstCompile]
         public void OnUpdate(ref SystemState state)
         {
-            // Получаем Singleton префабов
+            // Получаем ссылки на синглтоны префабов и волн
             var prefabHolder = SystemAPI.GetSingleton<PrefabHolder>();
-
-            // Получаем Singleton держателя волн Blob
             var wavesHolder = SystemAPI.GetSingletonRW<WavesHolder>();
 
             if (wavesHolder.ValueRO.AllWavesSpawned || !wavesHolder.ValueRO.WavesReference.IsCreated)
@@ -39,36 +44,38 @@ namespace SlimeSwarm
             ref var wavesBlob = ref wavesHolder.ValueRO.WavesReference.Value;
             int currentWave = wavesHolder.ValueRO.CurrentWaveIndex;
 
+            // Если все волны из Blob-массива уже вышли
             if (currentWave >= wavesBlob.Waves.Length)
             {
                 wavesHolder.ValueRW.AllWavesSpawned = true;
                 return;
             }
 
-            // Наращиваем таймер волны
-            wavesHolder.ValueRW.WaveTimer += 1.0f; // Вызывается раз в секунду из WaveSystemGroup
+            // Наращиваем таймер волны (вызывается 1 раз в секунду из WaveSystemGroup)
+            wavesHolder.ValueRW.WaveTimer += 1.0f;
 
             ref var wave = ref wavesBlob.Waves[currentWave];
 
+            // Проверяем, наступило ли время выхода текущей волны
             if (wavesHolder.ValueRO.WaveTimer >= wave.WaitTimeBeforeWave)
             {
                 wavesHolder.ValueRW.WaveTimer = 0f;
                 wavesHolder.ValueRW.CurrentWaveIndex++;
 
-                // Генератор случайных чисел из Singleton RandomHolder
+                // Генератор псевдослучайных чисел из синглтона RandomHolder
                 var randomHolder = SystemAPI.GetSingletonRW<RandomHolder>();
                 ref var rng = ref randomHolder.ValueRW.Random;
 
-                // Создаем буфер команд
+                // Создаем буфер команд для создания сущностей
                 var ecbSingleton = SystemAPI.GetSingleton<BeginSimulationEntityCommandBufferSystem.Singleton>();
                 var ecb = ecbSingleton.CreateCommandBuffer(state.WorldUnmanaged);
 
                 float radius = 45f;
 
                 // Спавним всех врагов текущей волны из вложенного массива Blob
-                for (int enemyGroupIdx = 0; enemyGroupIdx < wave.Enemies.Length; enemyGroupIdx++)
+                for (int groupIdx = 0; groupIdx < wave.Enemies.Length; groupIdx++)
                 {
-                    ref var enemyGroup = ref wave.Enemies[enemyGroupIdx];
+                    ref var enemyGroup = ref wave.Enemies[groupIdx];
                     Entity prefabToSpawn = enemyGroup.EnemyType == EnemyType.Red 
                         ? prefabHolder.RedSlimePrefab 
                         : prefabHolder.GreenSlimePrefab;
@@ -78,6 +85,7 @@ namespace SlimeSwarm
 
                     for (int i = 0; i < enemyGroup.Amount; i++)
                     {
+                        // Создаем сущность из префаба через ECB
                         Entity newEnemy = ecb.Instantiate(prefabToSpawn);
 
                         // Случайная позиция на окружности с помощью Unity.Mathematics.Random
@@ -90,6 +98,7 @@ namespace SlimeSwarm
                             math.sin(angle) * dist
                         );
 
+                        // Устанавливаем координаты сущности
                         ecb.SetComponent(newEnemy, LocalTransform.FromPositionRotationScale(spawnPos, quaternion.identity, 1f));
                     }
                 }

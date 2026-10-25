@@ -4,8 +4,12 @@ using Unity.Mathematics;
 
 namespace SlimeSwarm
 {
-    // Система обработки DynamicBuffer по методичке (стр. 5-6)
-    // DynamicBuffer передается без оберток RefRO/RefRW
+    // =========================================================================
+    // ПРАКТИКА №2: ОБРАБОТКА ДИНАМИЧЕСКОГО БУФЕРА УРОНА БАШНИ (DynamicBuffer)
+    // Слайды 5-6 методички №2:
+    // DynamicBuffer<DamageBufferElement> собирает входящий урон по башне.
+    // Система суммирует все элементы буфера, вычитает из здоровья и очищает буфер.
+    // =========================================================================
     [BurstCompile]
     [UpdateInGroup(typeof(SimulationSystemGroup))]
     [UpdateAfter(typeof(TowerDefenseSystem))]
@@ -20,7 +24,7 @@ namespace SlimeSwarm
         [BurstCompile]
         public void OnUpdate(ref SystemState state)
         {
-            // Обрабатываем DynamicBuffer входящего урона на башне
+            // Обрабатываем буфер урона башни
             foreach (var (tower, damageBuffer) in SystemAPI.Query<RefRW<TowerComponent>, DynamicBuffer<DamageBufferElement>>())
             {
                 if (damageBuffer.IsEmpty)
@@ -32,10 +36,10 @@ namespace SlimeSwarm
                     totalDamage += damageBuffer[i].Value;
                 }
 
-                // Применяем накопленный из буфера урон
+                // Применяем накопленный урон к здоровью башни
                 tower.ValueRW.Health = math.max(0f, tower.ValueRO.Health - totalDamage);
 
-                // Очищаем буфер после обработки
+                // Очищаем буфер для приема новых порций урона в следующем кадре
                 damageBuffer.Clear();
             }
         }

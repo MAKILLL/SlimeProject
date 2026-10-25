@@ -5,68 +5,69 @@ using Unity.Transforms;
 
 namespace SlimeSwarm
 {
+    // =========================================================================
+    // ПРАКТИКА №3: ПАРАЛЛЕЛЬНАЯ АТАКА БАШНИ (IJobEntity)
+    // Слайды 2-3 методички:
+    // Башня наносит урон всем слизням, вошедшим в её радиус поражения.
+    // Параллельный джоб обходит всех слизней на разных ядрах процессора.
+    // Гонки данных нет: каждый поток модифицирует только своего слизня (HealthComponent).
+    // =========================================================================
     [BurstCompile]
     [UpdateInGroup(typeof(SimulationSystemGroup))]
-    [UpdateAfter(typeof(SlimeSimulationSystem))]
+    [UpdateAfter(typeof(SlimeMovementSystem))]
     public partial struct TowerDefenseSystem : ISystem
     {
         [BurstCompile]
         public void OnCreate(ref SystemState state)
         {
             state.RequireForUpdate<TargetTowerTag>();
+            state.RequireForUpdate<SlimeTag>();
         }
 
         [BurstCompile]
         public void OnUpdate(ref SystemState state)
         {
-            float deltaTime = SystemAPI.Time.DeltaTime;
-
-            float3 towerPos = float3.zero;
-            float attackRadius = 16f;
-            float damagePerSecond = 80f;
-            bool hasTower = false;
-
-            foreach (var (towerComp, towerTransform) in SystemAPI.Query<RefRO<TowerComponent>, RefRO<LocalTransform>>().WithAll<TargetTowerTag>())
-            {
-                towerPos = towerTransform.ValueRO.Position;
-                attackRadius = towerComp.ValueRO.AttackRadius;
-                damagePerSecond = towerComp.ValueRO.DamagePerSecond;
-                hasTower = true;
-                break;
-            }
-
-            if (!hasTower)
+            // Находим башню
+            if (!SystemAPI.TryGetSingletonEntity<TargetTowerTag>(out Entity towerEntity))
                 return;
 
-            float towerRadiusSq = attackRadius * attackRadius;
-            float damageToSlimes = damagePerSecond * deltaTime;
+            var towerTransform = SystemAPI.GetComponent<LocalTransform>(towerEntity);
+            var towerComp = SystemAPI.GetComponent<TowerComponent>(towerEntity);
 
-            // Запускаем параллельный джоб зонального урона
-            var job = new TowerDefenseDamageJob
+            float deltaTime = SystemAPI.Time.DeltaTime;
+
+            // Создаем джоб и передаем параметры зоны поражения
+            var job = new TowerAttackJob
             {
-                TowerPos = towerPos,
-                TowerRadiusSq = towerRadiusSq,
-                DamageToSlimes = damageToSlimes
+                TowerPosition = towerTransform.Position,
+                RadiusSq = towerComp.AttackRadius * towerComp.AttackRadius,
+                DamageThisFrame = towerComp.DamagePerSecond * deltaTime
             };
 
+            // Запускаем расчет урона параллельно
             state.Dependency = job.ScheduleParallel(state.Dependency);
         }
     }
 
     [BurstCompile]
-    [WithNone(typeof(DeadTag))]
-    public partial struct TowerDefenseDamageJob : IJobEntity
+    [WithNone(typeof(DeadTag))] // Атакуем только живых слизней
+    public partial struct TowerAttackJob : IJobEntity
     {
-        public float3 TowerPos;
-        public float TowerRadiusSq;
-        public float DamageToSlimes;
+        public float3 TowerPosition;
+        public float RadiusSq;
+        public float DamageThisFrame;
 
+        // Execute выполняется параллельно для множества сущностей
+        // ref HealthComponent — запись урона
+        // in LocalTransform — чтение положения слизня
         public void Execute(ref HealthComponent health, in LocalTransform transform)
         {
-            float distSq = math.distancesq(transform.Position, TowerPos);
-            if (distSq <= TowerRadiusSq)
+            float distSq = math.distancesq(transform.Position, TowerPosition);
+
+            // Если слизень находится в радиусе действия башни
+            if (distSq <= RadiusSq)
             {
-                health.Current -= DamageToSlimes;
+                health.Current -= DamageThisFrame;
             }
         }
     }

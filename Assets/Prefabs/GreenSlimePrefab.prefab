@@ -104,12 +104,5 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::SlimeSwarm.SlimeAuthoring
   maxHealth: 100
-  maxStamina: 50
-  staminaRecoveryRate: 35
-  jumpCost: 15
   moveSpeed: 4.5
-  jumpHeight: 1.2
   attackRange: 2
-  avoidanceRadius: 0.8
-  squashAmount: 0.35
-  bounceSpeed: 8

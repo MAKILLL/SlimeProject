@@ -94,7 +94,7 @@ namespace SlimeSwarm
         private void OnGUI()
         {
             float boxX = Screen.width - 385;
-            GUI.Box(new Rect(boxX, 15, 370, 245), "Арена Слизней — Практика №2 (DOTS Blob)");
+            GUI.Box(new Rect(boxX, 15, 370, 245), "Арена Слизней — Практика №3 (DOTS Jobs)");
 
             GUIStyle labelStyle = new GUIStyle(GUI.skin.label)
             {
